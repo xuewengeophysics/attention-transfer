@@ -225,6 +225,7 @@ def main():
             y = utils.data_parallel(f, inputs, params, sample[2], range(opt.ngpu))[0]
             return F.cross_entropy(y, targets), y
 
+    #state是什么？
     def log(t, state):
         torch.save(dict(params={k: v.data for k, v in params.items()},
                         optimizer=state['optimizer'].state_dict(),
@@ -241,6 +242,7 @@ def main():
 
     def on_forward(state):
         classacc.add(state['output'].data, state['sample'][1])
+        # loss
         meter_loss.add(state['loss'].item())
 
     def on_start(state):
@@ -259,6 +261,7 @@ def main():
             state['optimizer'] = create_optimizer(opt, lr * opt.lr_decay_ratio)
 
     def on_end_epoch(state):
+        # loss
         train_loss = meter_loss.mean
         train_acc = classacc.value()
         train_time = timer_train.value()
