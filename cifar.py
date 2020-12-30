@@ -13,6 +13,12 @@
     2017 Sergey Zagoruyko
 """
 
+"""
+First, train teachers: python cifar.py --save logs/resnet_16_2_teacher --depth 16 --width 2
+To train with activation-based AT do: python cifar.py --save logs/at_16_1_16_2 --teacher_id resnet_16_2_teacher --beta 1e+3
+To train with KD: python cifar.py --save logs/kd_16_1_16_2 --teacher_id resnet_16_2_teacher --alpha 0.9
+"""
+
 import argparse
 import os
 import json
@@ -28,6 +34,7 @@ from torchnet.engine import Engine
 from torch.utils.data import DataLoader
 import torch.backends.cudnn as cudnn
 import utils
+import ipdb
 
 cudnn.benchmark = True
 
@@ -207,6 +214,7 @@ def main():
     classacc = tnt.meter.ClassErrorMeter(accuracy=True)
     timer_train = tnt.meter.TimeMeter('s')
     timer_test = tnt.meter.TimeMeter('s')
+    #at_losses注意力loss
     meters_at = [tnt.meter.AverageValueMeter() for i in range(3)]
 
     if not os.path.exists(opt.save):
@@ -216,11 +224,21 @@ def main():
         inputs = utils.cast(sample[0], opt.dtype).detach()
         targets = utils.cast(sample[1], 'long')
         if opt.teacher_id != '':
+            #loss_groups是什么？
+            print('f = ', f)
+            print('tensor inputs = ', inputs.shape)
+            print('dict params = ', params.keys())
+            print('sample = ', sample[2])
+            print('opt.ngpu = ', range(opt.ngpu))
             y_s, y_t, loss_groups = utils.data_parallel(f, inputs, params, sample[2], range(opt.ngpu))
+            print('y_s = ',  y_s.shape)
+            print('y_t = ',  y_t.shape)
+            print('loss_groups = ', loss_groups)
+            ipdb.set_trace()
             loss_groups = [v.sum() for v in loss_groups]
+            #计算meters_at，即at_losses注意力loss
             [m.add(v.item()) for m, v in zip(meters_at, loss_groups)]
-            return utils.distillation(y_s, y_t, targets, opt.temperature, opt.alpha) \
-                   + opt.beta * sum(loss_groups), y_s
+            return utils.distillation(y_s, y_t, targets, opt.temperature, opt.alpha) + opt.beta * sum(loss_groups), y_s
         else:
             y = utils.data_parallel(f, inputs, params, sample[2], range(opt.ngpu))[0]
             return F.cross_entropy(y, targets), y
@@ -284,8 +302,7 @@ def main():
             "test_time": timer_test.value(),
             "at_losses": [m.value() for m in meters_at],
            }, state))
-        print('==> id: %s (%d/%d), test_acc: \33[91m%.2f\033[0m' % \
-                       (opt.save, state['epoch'], opt.epochs, test_acc))
+        print('==> id: %s (%d/%d), test_acc: \33[91m%.2f\033[0m' % (opt.save, state['epoch'], opt.epochs, test_acc))
 
     engine = Engine()
     engine.hooks['on_sample'] = on_sample
@@ -293,6 +310,7 @@ def main():
     engine.hooks['on_start_epoch'] = on_start_epoch
     engine.hooks['on_end_epoch'] = on_end_epoch
     engine.hooks['on_start'] = on_start
+    #模型训练
     engine.train(h, train_loader, opt.epochs, optimizer)
 
 

@@ -269,6 +269,7 @@ def main():
         return utils.distillation(y_s, y_t, targets, opt.temperature, opt.alpha) \
                 + opt.beta * sum(loss_groups), y_s
 
+    #state是什么？
     def log(t, state):
         torch.save(dict(params={k: v.data for k, v in params.items()},
                         optimizer=state['optimizer'].state_dict(),
